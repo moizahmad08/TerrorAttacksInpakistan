@@ -52,7 +52,7 @@ export default function StatsPage() {
     return (
       <div className="empty-state">
         <div className="empty-title">Could not load statistics</div>
-        <p>Ensure the backend is running on port 8000.</p>
+        <p>Ensure the backend is running (Docker: port 8095 with API proxy, or local dev: port 8000).</p>
       </div>
     );
   }

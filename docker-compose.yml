@@ -1,3 +1,6 @@
+# Website: http://YOUR_SERVER:8095  (nginx + React)
+# API (internal): backend:8000 — browser calls http://YOUR_SERVER:8095/api/...
+
 services:
   backend:
     image: pakistan-chatbot-backend:v2
@@ -6,12 +9,15 @@ services:
       dockerfile: Dockerfile
     container_name: pakistan-chatbot-backend
     restart: always
+    env_file:
+      - ./backend/.env
     environment:
       - HOST=0.0.0.0
       - PORT=8000
       - CORS_ORIGINS=*
     volumes:
       - ./backend/data:/app/data
+      - ./pakistan_incidents_1947_2026.csv:/app/data/pakistan_incidents_1947_2026.csv:ro
 
   frontend:
     image: pakistan-chatbot-frontend:v2

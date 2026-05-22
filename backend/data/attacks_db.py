@@ -446,6 +446,43 @@ FALLBACK_PERPETRATORS = [
 ATTACKS_DATA = []
 PROVINCES = []
 PERPETRATORS = []
+DATA_SOURCE = "unknown"  # supabase | csv | fallback
+
+
+def _apply_records(mapped_data: list, source: str) -> None:
+    global DATA_SOURCE
+    provinces_set = set()
+    perpetrators_set = set()
+    for row in mapped_data:
+        if row.get("province"):
+            provinces_set.add(row["province"])
+        if row.get("perpetrator"):
+            perpetrators_set.add(row["perpetrator"])
+
+    ATTACKS_DATA.clear()
+    ATTACKS_DATA.extend(mapped_data)
+    PROVINCES.clear()
+    PROVINCES.extend(sorted(provinces_set))
+    PERPETRATORS.clear()
+    PERPETRATORS.extend(sorted(perpetrators_set))
+    DATA_SOURCE = source
+    logger.info("Loaded %s records from %s.", len(ATTACKS_DATA), source)
+
+
+def load_from_csv() -> bool:
+    """Load full dataset from bundled CSV files when Supabase is unavailable."""
+    try:
+        from data.csv_loader import load_all_records
+
+        records = load_all_records()
+        if not records:
+            logger.warning("No records found in CSV files.")
+            return False
+        _apply_records(records, "csv")
+        return True
+    except Exception as e:
+        logger.error("Error loading from CSV: %s", e, exc_info=True)
+        return False
 
 def load_from_supabase() -> bool:
     """
@@ -482,8 +519,6 @@ def load_from_supabase() -> bool:
             return False
 
         mapped_data = []
-        provinces_set = set()
-        perpetrators_set = set()
 
         for idx, row in enumerate(data):
             # Parse deaths safely
@@ -529,35 +564,17 @@ def load_from_supabase() -> bool:
                 "source": "Supabase"
             }
             mapped_data.append(mapped_row)
-            
-            if mapped_row["province"]:
-                provinces_set.add(mapped_row["province"])
-            if mapped_row["perpetrator"]:
-                perpetrators_set.add(mapped_row["perpetrator"])
 
-        # Update lists in place to keep references intact
-        ATTACKS_DATA.clear()
-        ATTACKS_DATA.extend(mapped_data)
-
-        PROVINCES.clear()
-        PROVINCES.extend(sorted(list(provinces_set)))
-
-        PERPETRATORS.clear()
-        PERPETRATORS.extend(sorted(list(perpetrators_set)))
-
-        logger.info(f"Successfully loaded {len(ATTACKS_DATA)} records from Supabase.")
+        _apply_records(mapped_data, "supabase")
         return True
 
     except Exception as e:
         logger.error(f"Error loading from Supabase: {e}", exc_info=True)
         return False
 
-# Self-load on import
+# Self-load on import: Supabase → CSV files → small static fallback
 if not load_from_supabase():
-    logger.warning("Supabase load failed. Populating with fallback static data.")
-    ATTACKS_DATA.clear()
-    ATTACKS_DATA.extend(FALLBACK_ATTACKS_DATA)
-    PROVINCES.clear()
-    PROVINCES.extend(FALLBACK_PROVINCES)
-    PERPETRATORS.clear()
-    PERPETRATORS.extend(FALLBACK_PERPETRATORS)
+    logger.warning("Supabase load failed. Trying CSV files...")
+    if not load_from_csv():
+        logger.warning("CSV load failed. Using minimal fallback static data.")
+        _apply_records(FALLBACK_ATTACKS_DATA, "fallback")

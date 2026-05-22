@@ -4,11 +4,15 @@ const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
 
 export default function Sidebar({ currentPage, onNavigate, isOpen, onToggle }) {
   const [apiStatus, setApiStatus] = useState("checking");
+  const [recordCount, setRecordCount] = useState(null);
 
   useEffect(() => {
     fetch(`${API_BASE}/health`)
       .then(r => r.json())
-      .then(d => setApiStatus(d.mode || "demo"))
+      .then(d => {
+        setApiStatus(d.mode || "demo");
+        setRecordCount(d.total_incidents);
+      })
       .catch(() => setApiStatus("offline"));
   }, []);
 
@@ -56,6 +60,9 @@ export default function Sidebar({ currentPage, onNavigate, isOpen, onToggle }) {
             {apiStatus === "live" ? "Grok API · Live" :
              apiStatus === "demo" ? "Demo Mode" : "Backend Offline"}
           </div>
+          {recordCount != null && (
+            <div className="sidebar-records">{recordCount.toLocaleString()} records loaded</div>
+          )}
         </div>
       </aside>
     </>

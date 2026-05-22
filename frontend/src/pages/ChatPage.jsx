@@ -160,7 +160,7 @@ export default function ChatPage() {
         {
           role: "assistant",
           content:
-            "## Connection error\n\nCould not reach the backend. Ensure the API is running at `http://localhost:8000`.\n\n- Start backend: `uvicorn main:app --reload --port 8000`\n- Then refresh this page.",
+            "## Connection error\n\nCould not reach the API.\n\n- **Docker:** open the site on port **8095** and run `docker compose up -d --build`\n- **Local dev:** run backend on **8000** and frontend on **3000** (`npm run dev`)",
           time: new Date().toISOString(),
         },
       ]);
