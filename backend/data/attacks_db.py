@@ -1,4 +1,17 @@
-ATTACKS_DATA = [
+import os
+import logging
+from dotenv import load_dotenv
+from supabase import create_client
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Load environment variables
+load_dotenv()
+
+# Fallback static data in case Supabase is unavailable
+FALLBACK_ATTACKS_DATA = [
     {
         "id": "pk001",
         "date": "2014-12-16",
@@ -417,8 +430,8 @@ ATTACKS_DATA = [
     }
 ]
 
-PROVINCES = ["Khyber Pakhtunkhwa", "Balochistan", "Punjab", "Sindh", "Islamabad Capital Territory"]
-PERPETRATORS = [
+FALLBACK_PROVINCES = ["Khyber Pakhtunkhwa", "Balochistan", "Punjab", "Sindh", "Islamabad Capital Territory"]
+FALLBACK_PERPETRATORS = [
     "Tehrik-i-Taliban Pakistan (TTP)",
     "Islamic State Khorasan Province (ISKP)",
     "Baloch Liberation Army (BLA)",
@@ -428,3 +441,123 @@ PERPETRATORS = [
     "Lashkar-e-Jhangvi",
     "Lashkar-e-Jhangvi Al-Alami"
 ]
+
+# Shared mutable lists imported by routers and services
+ATTACKS_DATA = []
+PROVINCES = []
+PERPETRATORS = []
+
+def load_from_supabase() -> bool:
+    """
+    Connect to Supabase and load attack records into ATTACKS_DATA, PROVINCES, and PERPETRATORS.
+    Returns True if load is successful, False otherwise.
+    """
+    global ATTACKS_DATA, PROVINCES, PERPETRATORS
+    try:
+        url = os.environ.get("SUPABASE_URL")
+        key = os.environ.get("SUPABASE_KEY")
+        if not url or not key:
+            logger.warning("SUPABASE_URL or SUPABASE_KEY is missing from environment. Using fallback data.")
+            return False
+
+        logger.info("Connecting to Supabase to fetch databaseterrorattacks...")
+        supabase = create_client(url, key)
+        
+        # Paginate to fetch all records (PostgREST limit is 1000 by default)
+        data = []
+        offset = 0
+        limit = 1000
+        while True:
+            response = supabase.table("databaseterrorattacks").select("*").range(offset, offset + limit - 1).execute()
+            batch = response.data
+            if not batch:
+                break
+            data.extend(batch)
+            if len(batch) < limit:
+                break
+            offset += limit
+
+        if not data:
+            logger.warning("No data retrieved from Supabase. Using fallback data.")
+            return False
+
+        mapped_data = []
+        provinces_set = set()
+        perpetrators_set = set()
+
+        for idx, row in enumerate(data):
+            # Parse deaths safely
+            deaths = 0
+            if row.get("killed") is not None:
+                try:
+                    deaths = int(row["killed"])
+                except (ValueError, TypeError):
+                    pass
+
+            # Parse injuries safely
+            injuries = 0
+            if row.get("wounded") is not None:
+                try:
+                    injuries = int(row["wounded"])
+                except (ValueError, TypeError):
+                    pass
+
+            # Map the columns correctly from Supabase schema
+            # Supabase schema:
+            # - incident_id -> id
+            # - date -> date
+            # - city -> location
+            # - region -> province
+            # - attack_type -> attack_type
+            # - target_type -> target
+            # - perpetrator_group -> perpetrator
+            # - killed -> deaths
+            # - wounded -> injuries
+            # - notes -> description
+            # - (use default "Supabase" source)
+            mapped_row = {
+                "id": str(row.get("incident_id") or f"sp{idx:04d}"),
+                "date": str(row.get("date") or ""),
+                "location": str(row.get("city") or ""),
+                "province": str(row.get("region") or ""),
+                "attack_type": str(row.get("attack_type") or ""),
+                "target": str(row.get("target_type") or ""),
+                "perpetrator": str(row.get("perpetrator_group") or "Unknown"),
+                "deaths": deaths,
+                "injuries": injuries,
+                "description": str(row.get("notes") or ""),
+                "source": "Supabase"
+            }
+            mapped_data.append(mapped_row)
+            
+            if mapped_row["province"]:
+                provinces_set.add(mapped_row["province"])
+            if mapped_row["perpetrator"]:
+                perpetrators_set.add(mapped_row["perpetrator"])
+
+        # Update lists in place to keep references intact
+        ATTACKS_DATA.clear()
+        ATTACKS_DATA.extend(mapped_data)
+
+        PROVINCES.clear()
+        PROVINCES.extend(sorted(list(provinces_set)))
+
+        PERPETRATORS.clear()
+        PERPETRATORS.extend(sorted(list(perpetrators_set)))
+
+        logger.info(f"Successfully loaded {len(ATTACKS_DATA)} records from Supabase.")
+        return True
+
+    except Exception as e:
+        logger.error(f"Error loading from Supabase: {e}", exc_info=True)
+        return False
+
+# Self-load on import
+if not load_from_supabase():
+    logger.warning("Supabase load failed. Populating with fallback static data.")
+    ATTACKS_DATA.clear()
+    ATTACKS_DATA.extend(FALLBACK_ATTACKS_DATA)
+    PROVINCES.clear()
+    PROVINCES.extend(FALLBACK_PROVINCES)
+    PERPETRATORS.clear()
+    PERPETRATORS.extend(FALLBACK_PERPETRATORS)
