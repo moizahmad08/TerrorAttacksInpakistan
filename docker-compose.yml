@@ -5,8 +5,10 @@ services:
       dockerfile: Dockerfile
     container_name: pakistan-chatbot-backend
     restart: always
-    env_file:
-      - ./backend/.env
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - CORS_ORIGINS=*
     volumes:
       - ./backend/data:/app/data
 

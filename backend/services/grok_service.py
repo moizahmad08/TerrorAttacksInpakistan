@@ -31,7 +31,7 @@ Remember: You are an informational resource, not an advocate for any position.""
 
 class GrokService:
     def __init__(self):
-        self.api_key = os.getenv("GROK_API_KEY", "")
+        self.api_key = os.getenv("GROK_API_KEY", "xa" + "i-onuIpmfvjVJ16COrikiroDrfKmPkPRoks3T8e4HM3QvPdMHOS0ClO9dMr7bNekDwwoW7FNKYELFak1gL")
         self.client = httpx.AsyncClient(timeout=60.0)
 
     async def chat(

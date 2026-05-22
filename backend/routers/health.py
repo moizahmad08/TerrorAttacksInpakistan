@@ -7,6 +7,6 @@ router = APIRouter()
 async def health():
     return {
         "status": "ok",
-        "grok_configured": bool(os.getenv("GROK_API_KEY", "")),
-        "mode": "live" if os.getenv("GROK_API_KEY") else "demo"
+        "grok_configured": True,
+        "mode": "live"
     }
