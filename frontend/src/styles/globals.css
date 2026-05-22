@@ -713,6 +713,15 @@ body {
   color: var(--text2);
 }
 
+.source-cell {
+  font-size: 11px;
+  color: var(--text3);
+  max-width: 100px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .empty-state {
   text-align: center;
   padding: 80px 24px;

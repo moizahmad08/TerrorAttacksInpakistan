@@ -171,6 +171,7 @@ export default function DatabasePage() {
                   <th>Perpetrator</th>
                   <th>Killed</th>
                   <th>Injured</th>
+                  <th>Source</th>
                   <th>Summary</th>
                 </tr>
               </thead>
@@ -190,6 +191,7 @@ export default function DatabasePage() {
                     </td>
                     <td><span className="death-count">{a.deaths}</span></td>
                     <td className="injury-cell">{a.injuries}</td>
+                    <td className="source-cell">{a.source || "—"}</td>
                     <td className="desc-cell" title={a.description}>
                       {(a.description || "").length > 140
                         ? a.description.slice(0, 140) + "…"

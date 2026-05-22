@@ -88,7 +88,7 @@ def load_all_records() -> list:
                     "deaths": killed,
                     "injuries": wounded,
                     "description": row.get("notes", "").strip(),
-                    "source": "CSV",
+                    "source": row.get("source", "CSV").strip() or "CSV",
                 })
 
     if ATTACKS_CSV.exists():
@@ -132,7 +132,7 @@ def load_all_records() -> list:
                     "deaths": pick_int(row.get("Killed Max"), row.get("Killed Min")),
                     "injuries": pick_int(row.get("Injured Max"), row.get("Injured Min")),
                     "description": " ".join(p for p in note_parts if p).strip(),
-                    "source": "CSV",
+                    "source": row.get("source", "attacks.csv").strip() or "attacks.csv",
                 })
 
     return records

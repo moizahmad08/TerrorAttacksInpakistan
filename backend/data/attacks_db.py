@@ -537,21 +537,12 @@ def load_from_supabase() -> bool:
                 except (ValueError, TypeError):
                     pass
 
-            # Map the columns correctly from Supabase schema
-            # Supabase schema:
-            # - incident_id -> id
-            # - date -> date
-            # - city -> location
-            # - region -> province
-            # - attack_type -> attack_type
-            # - target_type -> target
-            # - perpetrator_group -> perpetrator
-            # - killed -> deaths
-            # - wounded -> injuries
-            # - notes -> description
-            # - (use default "Supabase" source)
+            # Map Supabase databaseterrorattacks columns to app format
+            # - new_id -> id (legacy: incident_id)
+            # - source -> source
+            record_id = row.get("new_id") or row.get("incident_id")
             mapped_row = {
-                "id": str(row.get("incident_id") or f"sp{idx:04d}"),
+                "id": str(record_id or f"sp{idx:04d}"),
                 "date": str(row.get("date") or ""),
                 "location": str(row.get("city") or ""),
                 "province": str(row.get("region") or ""),
@@ -561,7 +552,7 @@ def load_from_supabase() -> bool:
                 "deaths": deaths,
                 "injuries": injuries,
                 "description": str(row.get("notes") or ""),
-                "source": "Supabase"
+                "source": str(row.get("source") or "Supabase").strip() or "Supabase",
             }
             mapped_data.append(mapped_row)
 

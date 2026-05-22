@@ -75,7 +75,7 @@ def load_incidents_rows():
             total = safe_int(row.get("total_casualties"), killed + wounded)
             rows.append(
                 {
-                    "incident_id": row["incident_id"].strip(),
+                    "new_id": row["incident_id"].strip(),
                     "date": row["date"].strip(),
                     "year": safe_int(row.get("year")),
                     "month": safe_int(row.get("month")),
@@ -92,6 +92,7 @@ def load_incidents_rows():
                     "attack_success": row.get("attack_success", "Yes").strip() or "Yes",
                     "property_damage": row.get("property_damage", "Unknown").strip() or "Unknown",
                     "notes": row.get("notes", "").strip(),
+                    "source": row.get("source", "CSV").strip() or "CSV",
                 }
             )
     return rows
@@ -131,7 +132,7 @@ def load_attacks_rows():
 
             rows.append(
                 {
-                    "incident_id": f"ATK-{row.get('S#', '').strip().zfill(4)}",
+                    "new_id": f"ATK-{row.get('S#', '').strip().zfill(4)}",
                     "date": parsed.isoformat(),
                     "year": parsed.year,
                     "month": parsed.month,
@@ -148,6 +149,7 @@ def load_attacks_rows():
                     "attack_success": "Yes",
                     "property_damage": "Unknown",
                     "notes": notes,
+                    "source": row.get("source", "attacks.csv").strip() or "attacks.csv",
                 }
             )
     return rows
@@ -157,7 +159,7 @@ def upsert_batches(supabase, records):
     total = 0
     for i in range(0, len(records), BATCH_SIZE):
         batch = records[i : i + BATCH_SIZE]
-        supabase.table(TABLE).upsert(batch, on_conflict="incident_id").execute()
+        supabase.table(TABLE).upsert(batch, on_conflict="new_id").execute()
         total += len(batch)
         logger.info("Upserted %s / %s records", total, len(records))
     return total
@@ -186,12 +188,12 @@ def main():
 
     supabase = create_client(url, key)
 
-    before = supabase.table(TABLE).select("incident_id", count="exact").limit(1).execute()
+    before = supabase.table(TABLE).select("new_id", count="exact").limit(1).execute()
     logger.info("Rows in Supabase before import: %s", before.count)
 
     upsert_batches(supabase, all_records)
 
-    after = supabase.table(TABLE).select("incident_id", count="exact").limit(1).execute()
+    after = supabase.table(TABLE).select("new_id", count="exact").limit(1).execute()
     logger.info("Rows in Supabase after import: %s", after.count)
     logger.info("Import complete.")
 
