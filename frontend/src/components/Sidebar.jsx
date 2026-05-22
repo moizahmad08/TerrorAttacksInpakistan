@@ -57,8 +57,8 @@ export default function Sidebar({ currentPage, onNavigate, isOpen, onToggle }) {
         <div className="sidebar-footer">
           <div className="api-status">
             <div className={`status-dot ${apiStatus === "live" ? "live" : ""}`} />
-            {apiStatus === "live" ? "Grok API · Live" :
-             apiStatus === "demo" ? "Demo Mode" : "Backend Offline"}
+            {apiStatus === "live" ? "AI agent · search + Grok" :
+             apiStatus === "demo" ? "Search agent (add GROK_API_KEY)" : "Backend Offline"}
           </div>
           {recordCount != null && (
             <div className="sidebar-records">{recordCount.toLocaleString()} records loaded</div>

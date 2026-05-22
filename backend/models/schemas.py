@@ -16,6 +16,7 @@ class ChatResponse(BaseModel):
     session_id: str
     sources: Optional[List[dict]] = []
     intent: Optional[str] = None
+    mode: Optional[str] = None  # "ai" = Grok agent, "database" = search + local summary
 
 class AttackRecord(BaseModel):
     id: str

@@ -18,7 +18,13 @@ const INTENT_LABELS = {
   location: "Location",
   perpetrator: "Group",
   ranking: "Ranking",
-  general: "Search",
+  incident: "Incident lookup",
+  general: "Research",
+};
+
+const MODE_LABELS = {
+  ai: "Grok AI · Answered from search",
+  database: "Database search · Summary",
 };
 
 function SourceCard({ source }) {
@@ -50,8 +56,17 @@ function MessageBubble({ msg }) {
         {isBot ? "PA" : "You"}
       </div>
       <div className="msg-body">
-        {isBot && msg.intent && (
-          <span className="intent-badge">{INTENT_LABELS[msg.intent] || msg.intent}</span>
+        {isBot && (
+          <div className="msg-badges">
+            {msg.mode && (
+              <span className={`mode-badge ${msg.mode === "ai" ? "mode-ai" : ""}`}>
+                {MODE_LABELS[msg.mode] || msg.mode}
+              </span>
+            )}
+            {msg.intent && (
+              <span className="intent-badge">{INTENT_LABELS[msg.intent] || msg.intent}</span>
+            )}
+          </div>
         )}
         <div className="msg-bubble">
           {isBot ? (
@@ -86,7 +101,7 @@ function TypingIndicator() {
           <div className="typing-dot" />
           <div className="typing-dot" />
         </div>
-        <span className="typing-label">Searching knowledge base…</span>
+        <span className="typing-label">Searching database and preparing answer…</span>
       </div>
     </div>
   );
@@ -151,6 +166,7 @@ export default function ChatPage() {
           content: data.response,
           sources: data.sources,
           intent: data.intent,
+          mode: data.mode,
           time: new Date().toISOString(),
         },
       ]);
@@ -211,8 +227,8 @@ export default function ChatPage() {
             <div className="welcome-badge">Knowledge base · 1947–2026</div>
             <div className="welcome-title">Pakistan Terror Intelligence</div>
             <p className="welcome-sub">
-              Ask about attacks by location, date, perpetrator group, or casualty figures.
-              Answers are formatted with summaries, incident details, and source citations.
+              Ask any question about Pakistan terror attacks. The agent searches the database first,
+              then answers in natural language with sources cited below.
             </p>
             <div className="suggestion-chips">
               {SUGGESTIONS.map((s, i) => (

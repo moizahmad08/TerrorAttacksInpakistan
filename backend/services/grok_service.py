@@ -1,151 +1,144 @@
 import httpx
 import os
+import logging
 from typing import List, Dict, Tuple, Optional
 from dotenv import load_dotenv
 
-from services.response_formatter import format_incidents_markdown, format_statistics_markdown
+from services.response_formatter import format_agent_fallback
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 GROK_API_URL = "https://api.x.ai/v1/chat/completions"
-GROK_MODEL = "grok-4-1-fast"  # or grok-4-1-fast-reasoning
+GROK_MODEL = os.getenv("GROK_MODEL", "grok-4-1-fast")
 
-SYSTEM_PROMPT = """You are an expert intelligence analyst for terrorism incidents in Pakistan.
-Answer ONLY from the RETRIEVED KNOWLEDGE BASE CONTEXT. Never invent facts.
+SYSTEM_PROMPT = """You are an intelligence research assistant for terrorism incidents in Pakistan.
+The system has ALREADY searched a database of 1,700+ attacks and provided matching records below.
 
-RESPONSE FORMAT (use markdown exactly):
+YOUR JOB:
+1. Read the user's question and the DATABASE SEARCH RESULTS.
+2. Answer in clear, natural language — explain, summarize, compare, or describe specific attacks.
+3. Use ONLY facts from the search results. Never invent dates, locations, death tolls, or group names.
+4. If the user asks about a specific attack, describe what happened using the best matching record(s).
+5. If results are weak or empty, say what you could not find and suggest a clearer question (city, year, group).
 
-## Summary
-One or two sentences answering the user's question directly.
+STYLE:
+- Start with a direct answer (## Summary or opening paragraph).
+- Then give details; use markdown headings and bullets when listing multiple incidents.
+- Bold important numbers and names with **double asterisks**.
+- Be conversational and helpful, not a raw database dump.
+- No emoji."""
 
-## Incidents
-For each relevant record use this structure:
-
-### [Number]. [Location] — [Date]
-- **Attack type:** ...
-- **Target:** ...
-- **Perpetrator:** ...
-- **Casualties:** **X** killed, **Y** injured
-- **Details:** one concise sentence from context
-- **Source:** citation from context
-
-## Notes (optional)
-Only if needed: limitations, disputed claims, or "not in database".
-
-RULES:
-- Bold key numbers and names with **double asterisks**
-- Use bullet lists; separate incidents with blank lines
-- If context has no match: say so under ## Summary and suggest filters (city, year, group)
-- Casualty figures are from reported/official sources in the database
-- Do not use emoji; keep a neutral, factual tone"""
 
 class GrokService:
     def __init__(self):
-        self.api_key = os.getenv("GROK_API_KEY", "")
-        self.client = httpx.AsyncClient(timeout=60.0)
+        self.client = httpx.AsyncClient(timeout=90.0)
+
+    def _get_api_key(self) -> str:
+        return (os.getenv("GROK_API_KEY") or "").strip()
+
+    def is_configured(self) -> bool:
+        key = self._get_api_key()
+        return bool(key and key != "your_grok_api_key_here")
+
+    async def _call_grok(self, messages: List[Dict]) -> str:
+        api_key = self._get_api_key()
+        payload = {
+            "model": GROK_MODEL,
+            "messages": [{"role": "system", "content": SYSTEM_PROMPT}] + messages,
+            "max_tokens": 2000,
+            "temperature": 0.3,
+        }
+
+        response = await self.client.post(
+            GROK_API_URL,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+        if response.status_code >= 400:
+            logger.error("Grok API %s: %s", response.status_code, response.text[:400])
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"]
 
     async def chat(
         self,
         user_message: str,
         context: str,
         history: List[Dict],
-        use_reasoning: bool = True,
         intent: str = "general",
         retrieved_docs: Optional[List[Tuple[dict, float]]] = None,
         stats: Optional[dict] = None,
-    ) -> str:
+    ) -> Tuple[str, str]:
         """
-        Call Grok API with RAG context injected into the prompt.
-        Falls back to context-only response if no API key set.
+        Generate an agent response after database search.
+        Returns (response_text, mode) where mode is 'ai' or 'database'.
         """
-        
-        if not self.api_key or self.api_key == "your_grok_api_key_here":
-            return self._fallback_response(
-                user_message, context, intent=intent,
-                retrieved_docs=retrieved_docs, stats=stats,
+        if self.is_configured():
+            messages = []
+            for msg in history[-8:]:
+                messages.append({"role": msg["role"], "content": msg["content"]})
+
+            search_note = (
+                f"{len(retrieved_docs)} record(s) found."
+                if retrieved_docs
+                else "No matching records found."
             )
 
-        messages = []
-        
-        # Add history
-        for msg in history[-6:]:  # last 6 turns for context window management
-            messages.append({"role": msg["role"], "content": msg["content"]})
-        
-        # Build the user message with context
-        full_user_message = f"""RETRIEVED KNOWLEDGE BASE CONTEXT:
+            user_prompt = f"""DATABASE SEARCH RESULTS ({search_note}):
 {context}
 
 ---
 USER QUESTION: {user_message}
 
-Answer based strictly on the context above. If the answer is not in the context, say so clearly."""
+Search the results above, then answer the user's question in natural language."""
 
-        messages.append({"role": "user", "content": full_user_message})
+            messages.append({"role": "user", "content": user_prompt})
 
-        payload = {
-            "model": GROK_MODEL,
-            "messages": [{"role": "system", "content": SYSTEM_PROMPT}] + messages,
-            "max_tokens": 1500,
-            "temperature": 0.1,  # Low temp for factual accuracy
-        }
+            try:
+                answer = await self._call_grok(messages)
+                return answer, "ai"
+            except Exception as e:
+                logger.error("Grok failed, using database agent fallback: %s", e)
 
-        if use_reasoning:
-            payload["reasoning"] = {"effort": "medium"}
-
-        try:
-            response = await self.client.post(
-                GROK_API_URL,
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json"
-                },
-                json=payload
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data["choices"][0]["message"]["content"]
-        except Exception:
-            return self._fallback_response(
-                user_message, context, intent=intent,
-                retrieved_docs=retrieved_docs, stats=stats,
-            )
-
-    def _fallback_response(
-        self,
-        query: str,
-        context: str,
-        intent: str = "general",
-        retrieved_docs: Optional[List[Tuple[dict, float]]] = None,
-        stats: Optional[dict] = None,
-    ) -> str:
-        """Demo mode: structured markdown without API call."""
-        if intent == "statistics" and stats:
-            return format_statistics_markdown(stats, query)
-
-        if retrieved_docs:
-            return format_incidents_markdown(retrieved_docs, query)
-
-        if not context or "No relevant" in context:
-            return format_incidents_markdown([], query)
-
-        return format_incidents_markdown([], query)
+        fallback = format_agent_fallback(
+            user_message,
+            retrieved_docs or [],
+            stats=stats,
+            intent=intent,
+        )
+        return fallback, "database"
 
     async def detect_intent(self, message: str) -> str:
-        """Lightweight intent detection without API call"""
         msg_lower = message.lower()
-        
-        if any(w in msg_lower for w in ['how many', 'total', 'count', 'statistics', 'stats']):
-            return 'statistics'
-        elif any(w in msg_lower for w in ['when', 'date', 'year', 'timeline']):
-            return 'temporal'
-        elif any(w in msg_lower for w in ['where', 'location', 'city', 'province', 'peshawar', 'karachi', 'quetta', 'lahore']):
-            return 'location'
-        elif any(w in msg_lower for w in ['who', 'which group', 'claimed', 'perpetrator', 'ttp', 'iskp', 'bla']):
-            return 'perpetrator'
-        elif any(w in msg_lower for w in ['deadliest', 'worst', 'biggest', 'largest']):
-            return 'ranking'
-        else:
-            return 'general'
+
+        if any(w in msg_lower for w in ["how many", "total", "count", "statistics", "stats"]):
+            return "statistics"
+        if any(w in msg_lower for w in ["when", "date", "year", "timeline", "recent", "latest"]):
+            return "temporal"
+        if any(
+            w in msg_lower
+            for w in [
+                "where", "location", "city", "province",
+                "peshawar", "karachi", "quetta", "lahore", "islamabad", "balochistan",
+            ]
+        ):
+            return "location"
+        if any(
+            w in msg_lower
+            for w in ["who", "which group", "claimed", "perpetrator", "ttp", "iskp", "bla", "taliban"]
+        ):
+            return "perpetrator"
+        if any(
+            w in msg_lower
+            for w in ["deadliest", "worst", "biggest", "largest", "most deadly", "highest death"]
+        ):
+            return "ranking"
+        if any(w in msg_lower for w in ["tell me about", "what happened", "describe", "explain", "attack on", "attack in"]):
+            return "incident"
+        return "general"
 
 
 grok_service = GrokService()

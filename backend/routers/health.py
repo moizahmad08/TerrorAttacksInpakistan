@@ -4,18 +4,19 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data.attacks_db import ATTACKS_DATA, DATA_SOURCE
+from services.grok_service import grok_service
 
 router = APIRouter()
 
 
 @router.get("/health")
 async def health():
-    grok_key = os.getenv("GROK_API_KEY", "")
-    grok_configured = bool(grok_key and grok_key != "your_grok_api_key_here")
+    grok_ok = grok_service.is_configured()
     return {
         "status": "ok",
-        "grok_configured": grok_configured,
-        "mode": "live" if grok_configured else "demo",
+        "grok_configured": grok_ok,
+        "mode": "live" if grok_ok else "demo",
+        "chat_mode": "ai_agent" if grok_ok else "database_agent",
         "total_incidents": len(ATTACKS_DATA),
         "data_source": DATA_SOURCE,
     }

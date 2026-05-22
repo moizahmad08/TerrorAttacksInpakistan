@@ -10,47 +10,53 @@ import uuid
 
 router = APIRouter()
 
+
 @router.post("/", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """
-    Main chat endpoint.
-    Flow: sanitize → intent detect → RAG retrieve → Grok generate → store history
+    Agent flow: understand question → search database → answer user (Grok AI or smart fallback).
     """
     if not request.message or not request.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
-    
+
     if len(request.message) > 1000:
         raise HTTPException(status_code=400, detail="Message too long (max 1000 chars)")
-    
-    # Session management
+
     session_id = request.session_id or session_memory.create_session()
     history = session_memory.get_history(session_id)
-    
-    # Intent detection (lightweight, no API call)
-    intent = await grok_service.detect_intent(request.message)
-    
-    # RAG Retrieval
-    top_k = 8 if intent in ("statistics", "ranking") else 5
-    retrieved_docs = rag_service.retrieve(request.message, top_k=top_k)
-    context = rag_service.build_context(retrieved_docs)
-    stats = rag_service.get_stats() if intent == "statistics" else None
 
-    # Grok generation
-    response_text = await grok_service.chat(
+    intent = await grok_service.detect_intent(request.message)
+
+    # Step 1: Search database for relevant attacks
+    retrieved_docs = rag_service.search_for_agent(request.message, intent)
+    context = rag_service.build_context(retrieved_docs)
+
+    stats = None
+    if intent == "statistics":
+        stats = rag_service.get_stats()
+        context = (
+            f"DATABASE STATISTICS:\n"
+            f"Total incidents: {stats['total_incidents']}\n"
+            f"Total deaths: {stats['total_deaths']}\n"
+            f"Total injuries: {stats['total_injuries']}\n"
+            f"By province (top): {dict(list(sorted(stats['by_province'].items(), key=lambda x: x[1], reverse=True))[:8])}\n"
+            f"By perpetrator (top): {dict(list(sorted(stats['by_perpetrator'].items(), key=lambda x: x[1], reverse=True))[:8])}\n\n"
+            + context
+        )
+
+    # Step 2: Agent answers using search results (Grok when configured)
+    response_text, mode = await grok_service.chat(
         user_message=request.message,
         context=context,
         history=history,
-        use_reasoning=(intent in ['ranking', 'statistics', 'general']),
         intent=intent,
         retrieved_docs=retrieved_docs,
         stats=stats,
     )
-    
-    # Store in session memory
+
     session_memory.add_message(session_id, "user", request.message)
     session_memory.add_message(session_id, "assistant", response_text)
-    
-    # Build sources list for citation
+
     sources = [
         {
             "id": doc["id"],
@@ -65,23 +71,24 @@ async def chat(request: ChatRequest):
         }
         for doc, _ in retrieved_docs[:5]
     ]
-    
+
     return ChatResponse(
         response=response_text,
         session_id=session_id,
         sources=sources,
-        intent=intent
+        intent=intent,
+        mode=mode,
     )
+
 
 @router.delete("/session/{session_id}")
 async def clear_session(session_id: str):
-    """Clear conversation history for a session"""
     if session_id in session_memory.sessions:
         del session_memory.sessions[session_id]
     return {"message": "Session cleared"}
 
+
 @router.get("/session/{session_id}/history")
 async def get_history(session_id: str):
-    """Get conversation history for a session"""
     history = session_memory.get_history(session_id)
     return {"session_id": session_id, "history": history}
