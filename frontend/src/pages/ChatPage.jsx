@@ -100,7 +100,7 @@ export default function ChatPage() {
     } catch (e) {
       setMessages(prev => [...prev, {
         role: "assistant",
-        content: "⚠️ Could not connect to the backend. Make sure FastAPI is running on port 8000.",
+        content: "⚠️ Could not connect to the backend. Please check if the backend service is running and accessible.",
         time: new Date().toISOString()
       }]);
     }
