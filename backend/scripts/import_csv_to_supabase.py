@@ -1,9 +1,7 @@
 """
-Import all project CSV files into Supabase databaseterrorattacks table.
+Import incident data into Supabase databaseterrorattacks table.
 
-Sources:
-  - pakistan_incidents_1947_2026.csv (root)
-  - backend/data/attacks.csv
+Primary source: combined_incidents.csv (project root)
 """
 
 import csv
@@ -21,32 +19,38 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[2]
-INCIDENTS_CSV = ROOT / "pakistan_incidents_1947_2026.csv"
-ATTACKS_CSV = ROOT / "backend" / "data" / "attacks.csv"
+
+
+def _resolve_combined_csv() -> Path:
+    candidates = [
+        ROOT / "combined_incidents.csv",
+        ROOT / "combined_incidents" / "combined_incidents.csv",
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
+    folder = ROOT / "combined_incidents"
+    if folder.is_dir():
+        csvs = sorted(folder.glob("*.csv"))
+        if csvs:
+            return csvs[0]
+    return ROOT / "combined_incidents.csv"
 TABLE = "databaseterrorattacks"
 BATCH_SIZE = 200
 
 
-def parse_attack_date(raw: str):
-    s = (raw or "").strip()
+def parse_date(value: str) -> str:
+    s = (value or "").strip()
     if not s:
-        return None
-    parts = s.split("-")
-    if len(parts) < 3:
-        return None
-    try:
-        year = int(parts[-1].strip())
-    except ValueError:
-        return None
-    month_day = "-".join(parts[1:-1]).strip()
-    if re.match(r"^[A-Za-z]{3,9}-\d{1,2}$", month_day):
-        month_day = month_day.replace("-", " ")
-    for fmt in ("%B %d %Y", "%b %d %Y"):
+        return ""
+    if re.match(r"^\d{4}-\d{2}-\d{2}", s):
+        return s[:10]
+    for fmt in ("%m/%d/%Y", "%m/%d/%y"):
         try:
-            return datetime.strptime(f"{month_day} {year}", fmt).date()
+            return datetime.strptime(s.split()[0], fmt).date().isoformat()
         except ValueError:
-            pass
-    return None
+            continue
+    return s
 
 
 def safe_int(value, default=0):
@@ -58,100 +62,53 @@ def safe_int(value, default=0):
         return default
 
 
-def pick_int(*values):
-    for v in values:
-        n = safe_int(v, default=-1)
-        if n >= 0:
-            return n
-    return 0
+def load_combined_rows():
+    combined_csv = _resolve_combined_csv()
+    if not combined_csv.exists():
+        logger.error("Missing combined incidents file. Expected: %s", combined_csv)
+        sys.exit(1)
 
-
-def load_incidents_rows():
     rows = []
-    with open(INCIDENTS_CSV, encoding="utf-8", errors="replace") as f:
+    with open(combined_csv, encoding="utf-8", errors="replace") as f:
         for row in csv.DictReader(f):
-            killed = safe_int(row.get("killed"))
-            wounded = safe_int(row.get("wounded"))
-            total = safe_int(row.get("total_casualties"), killed + wounded)
-            rows.append(
-                {
-                    "new_id": row["incident_id"].strip(),
-                    "date": row["date"].strip(),
-                    "year": safe_int(row.get("year")),
-                    "month": safe_int(row.get("month")),
-                    "day": safe_int(row.get("day")),
-                    "country": row.get("country", "Pakistan").strip() or "Pakistan",
-                    "region": row.get("region", "").strip(),
-                    "city": row.get("city", "").strip(),
-                    "attack_type": row.get("attack_type", "").strip(),
-                    "target_type": row.get("target_type", "").strip(),
-                    "perpetrator_group": row.get("perpetrator_group", "Unknown").strip() or "Unknown",
-                    "killed": killed,
-                    "wounded": wounded,
-                    "total_casualties": total,
-                    "attack_success": row.get("attack_success", "Yes").strip() or "Yes",
-                    "property_damage": row.get("property_damage", "Unknown").strip() or "Unknown",
-                    "notes": row.get("notes", "").strip(),
-                    "source": row.get("source", "CSV").strip() or "CSV",
-                }
-            )
-    return rows
-
-
-def load_attacks_rows():
-    rows = []
-    with open(ATTACKS_CSV, encoding="utf-8", errors="replace") as f:
-        for row in csv.DictReader(f):
-            parsed = parse_attack_date(row.get("Date", ""))
-            if not parsed:
-                logger.warning("Skipping row with unparseable date: %s", row.get("Date"))
+            new_id = (row.get("new_id") or row.get("incident_id") or "").strip()
+            if not new_id:
+                continue
+            date_iso = parse_date(row.get("date", ""))
+            if not date_iso:
+                logger.warning("Skipping row with bad date: %s %s", new_id, row.get("date"))
                 continue
 
-            killed = pick_int(row.get("Killed Max"), row.get("Killed Min"))
-            wounded = pick_int(row.get("Injured Max"), row.get("Injured Min"))
-            suicide = safe_int(row.get("No. of Suicide Blasts"))
-            attack_type = "Suicide bombing" if suicide > 0 else "Bombing / IED"
+            killed = safe_int(row.get("killed"))
+            wounded = safe_int(row.get("wounded"))
+            try:
+                y, m, d = date_iso.split("-")
+                year, month, day = int(y), int(m), int(d)
+            except ValueError:
+                year = safe_int(row.get("year"))
+                month = safe_int(row.get("month"))
+                day = safe_int(row.get("day"))
 
-            location = (row.get("Location") or "").strip()
-            city = (row.get("City") or "").strip()
-            province = (row.get("Province") or "").strip()
-            target = (row.get("Target Type") or "").strip()
-            sect = (row.get("Targeted Sect if any") or "").strip()
-            event = (row.get("Influencing Event/Event") or "").strip()
-            loc_cat = (row.get("Location Category") or "").strip()
-
-            note_parts = [
-                f"Detailed blast record from attacks.csv (S# {row.get('S#', '').strip()}).",
-                f"Location: {location}" if location else "",
-                f"Category: {loc_cat}" if loc_cat else "",
-                f"Target: {target}" if target else "",
-                f"Sect: {sect}" if sect and sect.lower() != "none" else "",
-                f"Context: {event}" if event else "",
-            ]
-            notes = " ".join(p for p in note_parts if p).strip()
-
-            rows.append(
-                {
-                    "new_id": f"ATK-{row.get('S#', '').strip().zfill(4)}",
-                    "date": parsed.isoformat(),
-                    "year": parsed.year,
-                    "month": parsed.month,
-                    "day": parsed.day,
-                    "country": "Pakistan",
-                    "region": province,
-                    "city": city,
-                    "attack_type": attack_type,
-                    "target_type": target or loc_cat or "Unknown",
-                    "perpetrator_group": "Unknown",
-                    "killed": killed,
-                    "wounded": wounded,
-                    "total_casualties": killed + wounded,
-                    "attack_success": "Yes",
-                    "property_damage": "Unknown",
-                    "notes": notes,
-                    "source": row.get("source", "attacks.csv").strip() or "attacks.csv",
-                }
-            )
+            rows.append({
+                "new_id": new_id,
+                "source": (row.get("source") or "Unknown").strip() or "Unknown",
+                "date": date_iso,
+                "year": year,
+                "month": month,
+                "day": day,
+                "country": row.get("country", "Pakistan").strip() or "Pakistan",
+                "region": row.get("region", "").strip(),
+                "city": row.get("city", "").strip(),
+                "attack_type": row.get("attack_type", "").strip(),
+                "target_type": row.get("target_type", "").strip(),
+                "perpetrator_group": row.get("perpetrator_group", "Unknown").strip() or "Unknown",
+                "killed": killed,
+                "wounded": wounded,
+                "total_casualties": safe_int(row.get("total_casualties"), killed + wounded),
+                "attack_success": row.get("attack_success", "Yes").strip() or "Yes",
+                "property_damage": row.get("property_damage", "Unknown").strip() or "Unknown",
+                "notes": row.get("notes", "").strip(),
+            })
     return rows
 
 
@@ -173,25 +130,16 @@ def main():
         logger.error("SUPABASE_URL and SUPABASE_KEY must be set in backend/.env")
         sys.exit(1)
 
-    if not INCIDENTS_CSV.exists():
-        logger.error("Missing file: %s", INCIDENTS_CSV)
-        sys.exit(1)
-    if not ATTACKS_CSV.exists():
-        logger.error("Missing file: %s", ATTACKS_CSV)
-        sys.exit(1)
-
-    incidents = load_incidents_rows()
-    attacks = load_attacks_rows()
-    all_records = incidents + attacks
-
-    logger.info("Loaded %s incident rows and %s attack rows (%s total)", len(incidents), len(attacks), len(all_records))
+    records = load_combined_rows()
+    combined_csv = _resolve_combined_csv()
+    logger.info("Loaded %s rows from %s", len(records), combined_csv)
 
     supabase = create_client(url, key)
 
     before = supabase.table(TABLE).select("new_id", count="exact").limit(1).execute()
     logger.info("Rows in Supabase before import: %s", before.count)
 
-    upsert_batches(supabase, all_records)
+    upsert_batches(supabase, records)
 
     after = supabase.table(TABLE).select("new_id", count="exact").limit(1).execute()
     logger.info("Rows in Supabase after import: %s", after.count)

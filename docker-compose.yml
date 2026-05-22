@@ -18,7 +18,7 @@ services:
       - GROK_MODEL=grok-4-1-fast-reasoning
     volumes:
       - ./backend/data:/app/data
-      - ./pakistan_incidents_1947_2026.csv:/app/data/pakistan_incidents_1947_2026.csv:ro
+      - ./combined_incidents.csv:/app/combined_incidents.csv:ro
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=10)\""]
       interval: 15s
