@@ -17,6 +17,7 @@ async def health():
         "grok_configured": grok_ok,
         "mode": "live" if grok_ok else "demo",
         "chat_mode": "ai_agent" if grok_ok else "database_agent",
+        "grok_model": os.getenv("GROK_MODEL", "grok-4-1-fast-reasoning") if grok_ok else None,
         "total_incidents": len(ATTACKS_DATA),
         "data_source": DATA_SOURCE,
     }

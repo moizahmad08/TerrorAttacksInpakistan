@@ -4,6 +4,9 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
+# Ensure production API URL is baked into the build (relative /api via nginx)
+COPY .env.production .env.production
+ENV VITE_API_URL=/api
 RUN npm run build
 
 # Serve stage

@@ -1,5 +1,5 @@
-# Website: http://YOUR_SERVER:8095  (nginx + React)
-# API (internal): backend:8000 — browser calls http://YOUR_SERVER:8095/api/...
+# Website: http://YOUR_SERVER:8095
+# API:     http://YOUR_SERVER:8095/api/  (proxied to backend:8000)
 
 services:
   backend:
@@ -15,9 +15,16 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
       - CORS_ORIGINS=*
+      - GROK_MODEL=grok-4-1-fast-reasoning
     volumes:
       - ./backend/data:/app/data
       - ./pakistan_incidents_1947_2026.csv:/app/data/pakistan_incidents_1947_2026.csv:ro
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=10)\""]
+      interval: 15s
+      timeout: 15s
+      retries: 5
+      start_period: 90s
 
   frontend:
     image: pakistan-chatbot-frontend:v2
@@ -29,4 +36,5 @@ services:
     ports:
       - "8095:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy

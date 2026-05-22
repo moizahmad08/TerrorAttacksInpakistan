@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { FormattedMessage } from "../utils/formatMessage";
-
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+import { API_BASE } from "../config/api";
 
 const SUGGESTIONS = [
   "What was the deadliest attack in Pakistan?",
@@ -176,7 +175,7 @@ export default function ChatPage() {
         {
           role: "assistant",
           content:
-            "## Connection error\n\nCould not reach the API.\n\n- **Docker:** open the site on port **8095** and run `docker compose up -d --build`\n- **Local dev:** run backend on **8000** and frontend on **3000** (`npm run dev`)",
+            `## Connection error\n\nCould not reach the API at \`${API_BASE}\`.\n\n- **Docker:** \`docker compose up -d --build\` then open **http://localhost:8095**\n- **Local dev:** backend \`uvicorn main:app --port 8000\` and \`npm run dev\` (port 3000)\n- Check: \`curl http://localhost:8095/api/health\``,
           time: new Date().toISOString(),
         },
       ]);

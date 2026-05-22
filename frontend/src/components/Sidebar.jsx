@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+import { API_BASE } from "../config/api";
 
 export default function Sidebar({ currentPage, onNavigate, isOpen, onToggle }) {
   const [apiStatus, setApiStatus] = useState("checking");

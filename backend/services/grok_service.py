@@ -10,7 +10,7 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 GROK_API_URL = "https://api.x.ai/v1/chat/completions"
-GROK_MODEL = os.getenv("GROK_MODEL", "grok-4-1-fast")
+GROK_MODEL = os.getenv("GROK_MODEL", "grok-4-1-fast-reasoning")
 
 SYSTEM_PROMPT = """You are an intelligence research assistant for terrorism incidents in Pakistan.
 The system has ALREADY searched a database of 1,700+ attacks and provided matching records below.
@@ -32,7 +32,7 @@ STYLE:
 
 class GrokService:
     def __init__(self):
-        self.client = httpx.AsyncClient(timeout=90.0)
+        self.client = httpx.AsyncClient(timeout=120.0)
 
     def _get_api_key(self) -> str:
         return (os.getenv("GROK_API_KEY") or "").strip()
@@ -50,6 +50,10 @@ class GrokService:
             "temperature": 0.3,
         }
 
+        # Reasoning model: enable effort when using grok-4-1-fast-reasoning
+        if "reasoning" in GROK_MODEL.lower():
+            payload["reasoning"] = {"effort": "medium"}
+
         response = await self.client.post(
             GROK_API_URL,
             headers={
@@ -60,6 +64,19 @@ class GrokService:
         )
         if response.status_code >= 400:
             logger.error("Grok API %s: %s", response.status_code, response.text[:400])
+            # Retry without reasoning if API rejects the field
+            if "reasoning" in payload:
+                del payload["reasoning"]
+                response = await self.client.post(
+                    GROK_API_URL,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                )
+                if response.status_code >= 400:
+                    logger.error("Grok retry %s: %s", response.status_code, response.text[:400])
         response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"]
 
@@ -72,10 +89,6 @@ class GrokService:
         retrieved_docs: Optional[List[Tuple[dict, float]]] = None,
         stats: Optional[dict] = None,
     ) -> Tuple[str, str]:
-        """
-        Generate an agent response after database search.
-        Returns (response_text, mode) where mode is 'ai' or 'database'.
-        """
         if self.is_configured():
             messages = []
             for msg in history[-8:]:
