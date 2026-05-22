@@ -37,6 +37,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/api")
+@app.get("/api/")
+async def api_root():
+    return {
+        "status": "ok",
+        "health": "/api/health",
+        "chat": "/api/chat/",
+        "attacks": "/api/attacks/",
+    }
+
+
 app.include_router(health.router, prefix="/api", tags=["Health"])
 app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
 app.include_router(attacks.router, prefix="/api/attacks", tags=["Attacks"])
