@@ -1,5 +1,6 @@
 services:
   backend:
+    image: pakistan-chatbot-backend:v2
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -13,6 +14,7 @@ services:
       - ./backend/data:/app/data
 
   frontend:
+    image: pakistan-chatbot-frontend:v2
     build:
       context: ./frontend
       dockerfile: Dockerfile
