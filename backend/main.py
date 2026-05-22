@@ -1,15 +1,32 @@
 from dotenv import load_dotenv
 load_dotenv()
 
+import asyncio
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers import chat, attacks, search, health
 import uvicorn
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Start API immediately; load data in background so Docker healthcheck passes."""
+    from data.attacks_db import ensure_data_loaded
+
+    async def _load():
+        await asyncio.to_thread(ensure_data_loaded)
+
+    task = asyncio.create_task(_load())
+    yield
+    task.cancel()
+
+
 app = FastAPI(
     title="Pakistan Terror Attacks Intelligence API",
     description="RAG-powered chatbot API for Pakistan terror attack data",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

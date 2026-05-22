@@ -170,12 +170,16 @@ export default function ChatPage() {
         },
       ]);
     } catch (e) {
+      const hint =
+        API_BASE.startsWith("/")
+          ? "On the server run: `docker compose ps` and `docker compose logs backend --tail 50`. Then `curl http://localhost:8095/api/health`"
+          : "Start backend: `cd backend` then `uvicorn main:app --port 8000`";
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
           content:
-            `## Connection error\n\nCould not reach the API at \`${API_BASE}\`.\n\n- **Docker:** \`docker compose up -d --build\` then open **http://localhost:8095**\n- **Local dev:** backend \`uvicorn main:app --port 8000\` and \`npm run dev\` (port 3000)\n- Check: \`curl http://localhost:8095/api/health\``,
+            `## Connection error\n\nCould not reach the API at \`${API_BASE}\`.\n\n${hint}\n\nIf health works but chat fails, wait 30s for the database to finish loading (\`"ready": true\` in health JSON).`,
           time: new Date().toISOString(),
         },
       ]);

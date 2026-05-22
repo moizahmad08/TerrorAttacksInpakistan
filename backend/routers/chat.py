@@ -6,6 +6,7 @@ from models.schemas import ChatRequest, ChatResponse
 from services.rag_service import rag_service
 from services.grok_service import grok_service
 from services.session_service import session_memory
+from data.attacks_db import ensure_data_loaded
 import uuid
 
 router = APIRouter()
@@ -21,6 +22,9 @@ async def chat(request: ChatRequest):
 
     if len(request.message) > 1000:
         raise HTTPException(status_code=400, detail="Message too long (max 1000 chars)")
+
+    ensure_data_loaded()
+    rag_service.refresh()
 
     session_id = request.session_id or session_memory.create_session()
     history = session_memory.get_history(session_id)

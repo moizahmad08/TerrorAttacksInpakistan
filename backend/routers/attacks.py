@@ -3,7 +3,7 @@ from typing import Optional
 import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from data.attacks_db import ATTACKS_DATA, PROVINCES, PERPETRATORS, DATA_SOURCE
+from data.attacks_db import ATTACKS_DATA, PROVINCES, PERPETRATORS, DATA_SOURCE, ensure_data_loaded
 from services.rag_service import rag_service
 
 router = APIRouter()
@@ -28,6 +28,7 @@ async def list_attacks(
     offset: int = Query(0, ge=0),
 ):
     """List attacks with filters, search, and pagination."""
+    ensure_data_loaded()
     filtered = ATTACKS_DATA.copy()
 
     if province:
@@ -57,6 +58,7 @@ async def list_attacks(
 @router.get("/meta")
 async def get_meta():
     """Dataset metadata for the frontend."""
+    ensure_data_loaded()
     return {
         "total_incidents": len(ATTACKS_DATA),
         "data_source": DATA_SOURCE,
@@ -68,6 +70,8 @@ async def get_meta():
 @router.get("/stats")
 async def get_statistics():
     """Get aggregate statistics from the knowledge base"""
+    ensure_data_loaded()
+    rag_service.refresh()
     stats = rag_service.get_stats()
     stats["data_source"] = DATA_SOURCE
     return stats
@@ -75,17 +79,20 @@ async def get_statistics():
 
 @router.get("/provinces")
 async def get_provinces():
+    ensure_data_loaded()
     return {"provinces": PROVINCES}
 
 
 @router.get("/perpetrators")
 async def get_perpetrators():
+    ensure_data_loaded()
     return {"perpetrators": PERPETRATORS}
 
 
 @router.get("/deadliest")
 async def get_deadliest(limit: int = Query(5, ge=1, le=20)):
     """Get deadliest attacks sorted by death toll"""
+    ensure_data_loaded()
     sorted_attacks = sorted(ATTACKS_DATA, key=lambda x: x["deaths"], reverse=True)
     return {"data": sorted_attacks[:limit]}
 
@@ -93,6 +100,7 @@ async def get_deadliest(limit: int = Query(5, ge=1, le=20)):
 @router.get("/{attack_id}")
 async def get_attack(attack_id: str):
     """Get a single attack by ID"""
+    ensure_data_loaded()
     attack = next((d for d in ATTACKS_DATA if d["id"] == attack_id), None)
     if not attack:
         from fastapi import HTTPException

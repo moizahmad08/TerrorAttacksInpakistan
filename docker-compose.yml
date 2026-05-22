@@ -1,5 +1,5 @@
 # Website: http://YOUR_SERVER:8095
-# API:     http://YOUR_SERVER:8095/api/  (proxied to backend:8000)
+# API:     http://YOUR_SERVER:8095/api/
 
 services:
   backend:
@@ -20,11 +20,11 @@ services:
       - ./backend/data:/app/data
       - ./combined_incidents.csv:/app/combined_incidents.csv:ro
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=10)\""]
-      interval: 15s
-      timeout: 15s
-      retries: 5
-      start_period: 90s
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5)\""]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
 
   frontend:
     image: pakistan-chatbot-frontend:v2

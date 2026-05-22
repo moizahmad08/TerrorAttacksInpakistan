@@ -1,5 +1,6 @@
 import os
 import logging
+import threading
 from dotenv import load_dotenv
 from supabase import create_client
 
@@ -447,6 +448,8 @@ ATTACKS_DATA = []
 PROVINCES = []
 PERPETRATORS = []
 DATA_SOURCE = "unknown"  # supabase | csv | fallback
+_load_lock = threading.Lock()
+_data_loaded = False
 
 
 def _apply_records(mapped_data: list, source: str) -> None:
@@ -563,9 +566,23 @@ def load_from_supabase() -> bool:
         logger.error(f"Error loading from Supabase: {e}", exc_info=True)
         return False
 
-# Self-load on import: Supabase → CSV files → small static fallback
-if not load_from_supabase():
-    logger.warning("Supabase load failed. Trying CSV files...")
-    if not load_from_csv():
-        logger.warning("CSV load failed. Using minimal fallback static data.")
-        _apply_records(FALLBACK_ATTACKS_DATA, "fallback")
+def is_data_loaded() -> bool:
+    return _data_loaded
+
+
+def ensure_data_loaded() -> None:
+    """Load dataset once (Supabase → combined CSV → fallback). Safe to call from any route."""
+    global _data_loaded
+    if _data_loaded:
+        return
+    with _load_lock:
+        if _data_loaded:
+            return
+        logger.info("Loading attack database...")
+        if not load_from_supabase():
+            logger.warning("Supabase load failed. Trying CSV files...")
+            if not load_from_csv():
+                logger.warning("CSV load failed. Using minimal fallback static data.")
+                _apply_records(FALLBACK_ATTACKS_DATA, "fallback")
+        _data_loaded = True
+        logger.info("Database ready: %s records (%s).", len(ATTACKS_DATA), DATA_SOURCE)
