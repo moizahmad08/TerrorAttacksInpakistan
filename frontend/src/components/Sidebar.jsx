@@ -13,9 +13,9 @@ export default function Sidebar({ currentPage, onNavigate, isOpen, onToggle }) {
   }, []);
 
   const navItems = [
-    { id: "chat", icon: "💬", label: "Intelligence Chat" },
-    { id: "database", icon: "🗄️", label: "Attack Database" },
-    { id: "stats", icon: "📊", label: "Statistics" },
+    { id: "chat", icon: "◆", label: "Intelligence Chat" },
+    { id: "database", icon: "▤", label: "Attack Database" },
+    { id: "stats", icon: "▥", label: "Statistics" },
   ];
 
   return (

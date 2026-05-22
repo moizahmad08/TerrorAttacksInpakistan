@@ -1,45 +1,58 @@
 import httpx
 import os
-from typing import List, Dict, Optional
-import json
+from typing import List, Dict, Tuple, Optional
 from dotenv import load_dotenv
+
+from services.response_formatter import format_incidents_markdown, format_statistics_markdown
 
 load_dotenv()
 
 GROK_API_URL = "https://api.x.ai/v1/chat/completions"
 GROK_MODEL = "grok-4-1-fast"  # or grok-4-1-fast-reasoning
 
-SYSTEM_PROMPT = """You are an expert intelligence analyst specializing in terrorism incidents in Pakistan. 
-You have access to a structured database of terror attacks.
+SYSTEM_PROMPT = """You are an expert intelligence analyst for terrorism incidents in Pakistan.
+Answer ONLY from the RETRIEVED KNOWLEDGE BASE CONTEXT. Never invent facts.
 
-Your role is to:
-1. Answer questions accurately using ONLY the provided context documents
-2. Always cite the date, location, and source for each attack you mention
-3. Clearly distinguish between confirmed facts and disputed claims
-4. If asked about something NOT in the context, say: "This incident is not in my current knowledge base."
-5. For casualty figures, always state they are from official/reported sources
-6. Present information in a clear, factual, journalist-style format
-7. When listing multiple attacks, format them clearly with dates and locations
-8. Never speculate or fabricate details not present in the context
+RESPONSE FORMAT (use markdown exactly):
 
-Format guidelines:
-- Use bullet points for lists of attacks
-- Bold important figures (deaths, dates, group names) using **text**
-- Always end with the source citation
+## Summary
+One or two sentences answering the user's question directly.
 
-Remember: You are an informational resource, not an advocate for any position."""
+## Incidents
+For each relevant record use this structure:
+
+### [Number]. [Location] — [Date]
+- **Attack type:** ...
+- **Target:** ...
+- **Perpetrator:** ...
+- **Casualties:** **X** killed, **Y** injured
+- **Details:** one concise sentence from context
+- **Source:** citation from context
+
+## Notes (optional)
+Only if needed: limitations, disputed claims, or "not in database".
+
+RULES:
+- Bold key numbers and names with **double asterisks**
+- Use bullet lists; separate incidents with blank lines
+- If context has no match: say so under ## Summary and suggest filters (city, year, group)
+- Casualty figures are from reported/official sources in the database
+- Do not use emoji; keep a neutral, factual tone"""
 
 class GrokService:
     def __init__(self):
-        self.api_key = os.getenv("GROK_API_KEY", "xa" + "i-onuIpmfvjVJ16COrikiroDrfKmPkPRoks3T8e4HM3QvPdMHOS0ClO9dMr7bNekDwwoW7FNKYELFak1gL")
+        self.api_key = os.getenv("GROK_API_KEY", "")
         self.client = httpx.AsyncClient(timeout=60.0)
 
     async def chat(
-        self, 
-        user_message: str, 
-        context: str, 
+        self,
+        user_message: str,
+        context: str,
         history: List[Dict],
-        use_reasoning: bool = True
+        use_reasoning: bool = True,
+        intent: str = "general",
+        retrieved_docs: Optional[List[Tuple[dict, float]]] = None,
+        stats: Optional[dict] = None,
     ) -> str:
         """
         Call Grok API with RAG context injected into the prompt.
@@ -47,7 +60,10 @@ class GrokService:
         """
         
         if not self.api_key or self.api_key == "your_grok_api_key_here":
-            return self._fallback_response(user_message, context)
+            return self._fallback_response(
+                user_message, context, intent=intent,
+                retrieved_docs=retrieved_docs, stats=stats,
+            )
 
         messages = []
         
@@ -88,56 +104,31 @@ Answer based strictly on the context above. If the answer is not in the context,
             response.raise_for_status()
             data = response.json()
             return data["choices"][0]["message"]["content"]
-        except Exception as e:
-            return self._fallback_response(user_message, context)
+        except Exception:
+            return self._fallback_response(
+                user_message, context, intent=intent,
+                retrieved_docs=retrieved_docs, stats=stats,
+            )
 
-    def _fallback_response(self, query: str, context: str) -> str:
-        """
-        Demo mode: Returns structured context without API call.
-        Used when no API key is configured.
-        """
+    def _fallback_response(
+        self,
+        query: str,
+        context: str,
+        intent: str = "general",
+        retrieved_docs: Optional[List[Tuple[dict, float]]] = None,
+        stats: Optional[dict] = None,
+    ) -> str:
+        """Demo mode: structured markdown without API call."""
+        if intent == "statistics" and stats:
+            return format_statistics_markdown(stats, query)
+
+        if retrieved_docs:
+            return format_incidents_markdown(retrieved_docs, query)
+
         if not context or "No relevant" in context:
-            return (
-                "I couldn't find specific records matching your query in the database. "
-                "Try searching by location (e.g., Peshawar, Karachi), year (e.g., 2014), "
-                "or group (e.g., TTP, ISKP)."
-            )
-        
-        lines = context.split('\n')
-        response_parts = ["Based on the knowledge base, here is what I found:\n"]
-        
-        current_record = {}
-        for line in lines:
-            if line.startswith('Date:'):
-                current_record['date'] = line.replace('Date:', '').strip()
-            elif line.startswith('Location:'):
-                current_record['location'] = line.replace('Location:', '').strip()
-            elif line.startswith('Perpetrator:'):
-                current_record['perp'] = line.replace('Perpetrator:', '').strip()
-            elif line.startswith('Deaths:'):
-                current_record['deaths'] = line.replace('Deaths:', '').strip()
-            elif line.startswith('Description:'):
-                current_record['desc'] = line.replace('Description:', '').strip()
-            elif line.startswith('---') and current_record:
-                if current_record.get('date'):
-                    response_parts.append(
-                        f"**{current_record.get('date', 'N/A')}** — {current_record.get('location', 'N/A')}\n"
-                        f"Perpetrator: {current_record.get('perp', 'Unknown')}\n"
-                        f"Deaths: **{current_record.get('deaths', '?')}**\n"
-                        f"{current_record.get('desc', '')}\n"
-                    )
-                current_record = {}
-        
-        if current_record.get('date'):
-            response_parts.append(
-                f"**{current_record.get('date', 'N/A')}** — {current_record.get('location', 'N/A')}\n"
-                f"Perpetrator: {current_record.get('perp', 'Unknown')}\n"
-                f"Deaths: **{current_record.get('deaths', '?')}**\n"
-                f"{current_record.get('desc', '')}\n"
-            )
-        
-        response_parts.append("\n*Note: Add your GROK_API_KEY to .env for AI-powered natural language responses.*")
-        return "\n".join(response_parts)
+            return format_incidents_markdown([], query)
+
+        return format_incidents_markdown([], query)
 
     async def detect_intent(self, message: str) -> str:
         """Lightweight intent detection without API call"""

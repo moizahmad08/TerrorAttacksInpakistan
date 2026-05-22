@@ -40,8 +40,22 @@ export default function StatsPage() {
     }).catch(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="loading">Loading statistics...</div>;
-  if (!stats) return <div className="loading">Could not load stats. Is the backend running?</div>;
+  if (loading) {
+    return (
+      <div className="loading">
+        <div className="loading-spinner" />
+        Loading statistics…
+      </div>
+    );
+  }
+  if (!stats) {
+    return (
+      <div className="empty-state">
+        <div className="empty-title">Could not load statistics</div>
+        <p>Ensure the backend is running on port 8000.</p>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -50,6 +64,7 @@ export default function StatsPage() {
           <div>
             <div className="page-eyebrow">Analysis</div>
             <div className="page-title">Statistics Overview</div>
+            <div className="page-meta">Aggregated from full knowledge base</div>
           </div>
         </div>
       </div>

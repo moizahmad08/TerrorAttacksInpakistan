@@ -30,15 +30,20 @@ async def chat(request: ChatRequest):
     intent = await grok_service.detect_intent(request.message)
     
     # RAG Retrieval
-    retrieved_docs = rag_service.retrieve(request.message, top_k=5)
+    top_k = 8 if intent in ("statistics", "ranking") else 5
+    retrieved_docs = rag_service.retrieve(request.message, top_k=top_k)
     context = rag_service.build_context(retrieved_docs)
-    
+    stats = rag_service.get_stats() if intent == "statistics" else None
+
     # Grok generation
     response_text = await grok_service.chat(
         user_message=request.message,
         context=context,
         history=history,
-        use_reasoning=(intent in ['ranking', 'statistics', 'general'])
+        use_reasoning=(intent in ['ranking', 'statistics', 'general']),
+        intent=intent,
+        retrieved_docs=retrieved_docs,
+        stats=stats,
     )
     
     # Store in session memory
@@ -51,10 +56,14 @@ async def chat(request: ChatRequest):
             "id": doc["id"],
             "date": doc["date"],
             "location": doc["location"],
+            "province": doc.get("province", ""),
+            "attack_type": doc.get("attack_type", ""),
+            "perpetrator": doc.get("perpetrator", ""),
             "deaths": doc["deaths"],
-            "source": doc["source"]
+            "injuries": doc.get("injuries", 0),
+            "source": doc["source"],
         }
-        for doc, _ in retrieved_docs[:3]
+        for doc, _ in retrieved_docs[:5]
     ]
     
     return ChatResponse(
